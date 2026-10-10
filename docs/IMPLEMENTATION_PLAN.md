@@ -66,18 +66,19 @@
 ## Development phases — complete sequentially
 
 ### Phase 0 — Repository and design baseline
-- [ ] Set up monorepo (`apps/api` NestJS, `services/inference` Python, `apps/web` reserved), README, `.env.example`, ignore secrets, formatting/linting, basic CI.
+- [x] Minimal monorepo baseline: `services/inference` Python, root README, `.gitignore`, service-local `.env.example` (no NestJS/`apps/` yet; no CI yet).
 - [ ] Document Telegram photo+prompt UX, image size/format limits, job timeout/retry policy, callback auth design and budget cap.
-- [ ] Define typed cross-service request/result contract; keep Python service runnable locally without NestJS.
-- **Done when:** clean checkout and setup instructions work; no cloud resources required.
+- [x] Keep Python service runnable locally without NestJS; library contract documented in [`PHASE_1.md`](PHASE_1.md) (full NestJS↔Modal typed contract still Phase 2).
+- **Done when:** clean checkout and setup instructions work; no cloud resources required. *(Partial — inference setup works; NestJS/apps/CI deferred.)*
 
 ### Phase 1 — Python SAM3 locally **(implement first)**
-- [ ] Create isolated Python environment and pinned dependencies; verify model availability/license, CPU/GPU support and minimum VRAM.
-- [ ] Implement `segment(image, prompt)` returning instance masks, scores, count; handle no detections and corrupt images.
-- [ ] Implement separate `render(image, masks)` with semi-transparent colored overlays, optional contours; preserve correct mask/image sizing.
-- [ ] CLI: `python -m inference.cli --image sample.jpg --prompt cat --output result.png`; print JSON `{count, ...}`.
-- [ ] Unit tests for rendering/counting (mock inference), fixture-based integration test, measure memory/warm inference latency.
-- **Done when:** local CLI reliably outputs count and highlighted image.
+- [x] Create isolated Python environment and pinned dependencies; verify model availability/license, CPU/GPU support and minimum VRAM.
+- [x] Implement `segment(image, prompt)` returning instance masks, scores, count; handle no detections and corrupt images.
+- [x] Implement separate `render(image, masks)` with semi-transparent colored overlays, optional contours; preserve correct mask/image sizing.
+- [x] CLI: `python -m inference.cli --image sample.jpg --prompt cat --output result.png`; print JSON `{count, ...}`.
+- [x] Unit tests for rendering/counting (mock inference), fixture-based integration test, measure memory/warm inference latency.
+- **Done when:** local CLI reliably outputs count and highlighted image.  
+  **Handoff:** [`PHASE_1.md`](PHASE_1.md).
 
 ### Phase 2 — Deploy Python to Modal
 - [ ] Build Modal image with pinned ML dependencies; load SAM3 once per warm GPU worker; pick GPU based on benchmarks.

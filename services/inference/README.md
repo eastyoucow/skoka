@@ -2,6 +2,8 @@
 
 Local SAM3 text-prompted instance segmentation and mask overlay.
 
+Phase 1 handoff (architecture, contracts, Phase 2 notes): [`docs/PHASE_1.md`](../../docs/PHASE_1.md).
+
 ## Setup
 
 ```bash
