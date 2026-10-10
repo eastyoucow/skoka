@@ -15,11 +15,17 @@ dependencies = [
   "Pillow==11.3.0",
   "numpy==2.5.3",
   "python-dotenv==1.2.4",
+  "boto3==1.40.46",
+  "httpx==0.28.1",
 ]
 
 [project.optional-dependencies]
+deploy = [
+  "modal==1.2.1",
+]
 dev = [
   "pytest==8.4.2",
+  "modal==1.2.1",
 ]
 
 [project.scripts]

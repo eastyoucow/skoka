@@ -1,4 +1,5 @@
-# Secrets and local env
+# Secrets and local env (never commit credentials)
+# Covers services/inference/.env, .env.modal, and any other .env.*
 .env
 .env.*
 !.env.example

@@ -1,6 +1,6 @@
 # Phase 1 — Local Python SAM3 Inference (handoff)
 
-Status: **complete enough to start Phase 2** (Modal). Local CLI can load gated `facebook/sam3`, run text-prompted instance segmentation, write an overlay image, and print JSON count metadata.
+Status: **complete** (Phase 2 Modal handoff is in [`PHASE_2.md`](PHASE_2.md)). Local CLI can load gated `facebook/sam3`, run text-prompted instance segmentation, write an overlay image, and print JSON count metadata.
 
 Prototype reference (not the runtime entrypoint): [`docs/main.py`](main.py).  
 Full product plan: [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).

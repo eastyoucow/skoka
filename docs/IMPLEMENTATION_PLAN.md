@@ -68,7 +68,7 @@
 ### Phase 0 — Repository and design baseline
 - [x] Minimal monorepo baseline: `services/inference` Python, root README, `.gitignore`, service-local `.env.example` (no NestJS/`apps/` yet; no CI yet).
 - [ ] Document Telegram photo+prompt UX, image size/format limits, job timeout/retry policy, callback auth design and budget cap.
-- [x] Keep Python service runnable locally without NestJS; library contract documented in [`PHASE_1.md`](PHASE_1.md) (full NestJS↔Modal typed contract still Phase 2).
+- [x] Keep Python service runnable locally without NestJS; library contract documented in [`PHASE_1.md`](PHASE_1.md); NestJS↔Modal callback contract documented in [`PHASE_2.md`](PHASE_2.md).
 - **Done when:** clean checkout and setup instructions work; no cloud resources required. *(Partial — inference setup works; NestJS/apps/CI deferred.)*
 
 ### Phase 1 — Python SAM3 locally **(implement first)**
@@ -81,19 +81,41 @@
   **Handoff:** [`PHASE_1.md`](PHASE_1.md).
 
 ### Phase 2 — Deploy Python to Modal
-- [ ] Build Modal image with pinned ML dependencies; load SAM3 once per warm GPU worker; pick GPU based on benchmarks.
-- [ ] Set `min_containers=0`, conservative `max_containers` (start 2), request timeout and memory; benchmark cold starts and parallel load.
-- [ ] Implement S3-compatible R2 read/write via `boto3`; private bucket, scoped credentials, lifecycle cleanup.
-- [ ] Expose async invocation compatible with NestJS; authenticated callback after successful R2 upload; bounded retry of callback failures.
-- [ ] Integration test with input/output R2 keys, including duplicate callback and worker failure simulation.
-- **Done when:** one externally submitted job produces an R2 result and completion event; measured cost/latency documented.
+- [x] Build Modal image with pinned ML dependencies; load SAM3 once per warm GPU worker; initial GPU T4 (re-pick after benchmarks).
+- [x] Set `min_containers=0`, `max_containers=2`, timeout/memory; cold/warm latency table to fill after first deploy ([`PHASE_2.md`](PHASE_2.md)).
+- [x] Implement S3-compatible R2 read/write via `boto3`; private bucket, scoped credentials; lifecycle cleanup (~24h) configured in Cloudflare (manual).
+- [x] Expose async Modal `spawn` invocation compatible with NestJS; payload `{jobId, attemptId, inputKey, prompt, outputKey, callbackUrl}`.
+- [x] Implement authenticated HTTP callback client (HMAC + Bearer); **Option B:** no live NestJS receiver — unit tests mock HTTP. Contract in [`PHASE_2.md`](PHASE_2.md).
+- [x] Do **not** containerize Python/SAM3; do **not** add Docker Compose (deferred to Phase 3 with NestJS).
+- **Done when:** Modal worker can download from R2, run SAM3, upload result, and invoke the callback client (mocked in tests + manual R2 smoke when credentials exist); measured cost/latency documented in [`PHASE_2.md`](PHASE_2.md).  
+  **Handoff:** [`PHASE_2.md`](PHASE_2.md) — decisions, Modal `skoka-dev` secret, `spawn` contract, callback auth, R2 keys, Phase 3 entry checklist. *(Fill latency/cost numbers after more GPU runs; not a Phase 3 blocker.)*
 
-### Phase 3 — NestJS + Supabase + R2 foundations
-- [ ] Deploy/connect NestJS to Supabase Postgres with TLS, small pool and TypeORM migrations.
+### Phase 3 — NestJS + Supabase + R2 foundations + local Docker
+- [ ] Scaffold NestJS under `apps/` (or agreed path); preserve monorepo layout and package management.
+- [ ] **Local Docker (required):** NestJS Dockerfile with hot reload; Postgres 17 official image; named volume for data; Postgres healthcheck and NestJS `depends_on` until healthy; env via `.env.example`; migrations runnable inside the API container; `docker compose up --build`; `.dockerignore`; README setup/commands. Constraints: no Python/SAM3 in Compose; no MinIO (use real R2); no secrets in git; keep setup simple for local dev.
+- [ ] Deploy/connect NestJS to Supabase Postgres (prod) with TLS, small pool and TypeORM migrations; local Compose Postgres for development.
 - [ ] Implement jobs/attempts/deliveries schema, state transitions and transactional repository methods.
 - [ ] Implement R2 storage adapter and file validation; health endpoints and structured logs with `jobId`/`attemptId`.
 - [ ] Unit/integration tests with local Postgres and S3-compatible test storage or mocks.
-- **Done when:** API can create job, upload input, persist state and read it after restart.
+- **Done when:** `docker compose up --build` starts API + Postgres; API can create job, upload input to R2, persist state and read it after restart.
+
+### Local Docker development (from Phase 3)
+
+Implement when NestJS lands. Requirements:
+
+| Requirement | Detail |
+|---|---|
+| NestJS Dockerfile | Hot reload for local development |
+| PostgreSQL 17 | Official Docker image |
+| Persistent volume | Named Docker volume for Postgres data |
+| Startup order | Postgres healthcheck; NestJS starts only when DB is ready (`depends_on` + condition) |
+| Configuration | Environment variables; update `.env.example` (placeholders only) |
+| Migrations | Executable inside the API container |
+| One command | `docker compose up --build` |
+| Ignore files | Appropriate `.dockerignore` files |
+| Docs | README setup instructions and common commands |
+
+**Constraints:** Do not containerize Python/SAM3 (runs locally or on Modal). Do not add MinIO — use a real Cloudflare R2 development bucket. Keep the setup simple and suitable for local development. Preserve the existing monorepo structure and package management. Do not modify application business logic unless necessary for Docker compatibility. Do not commit secrets or real credentials.
 
 ### Phase 4 — Telegram + reliable dispatch/callbacks
 - [ ] Telegram webhook secret validation, caption/command UX, file download, deduplication by `update_id`, immediate acknowledgement.
@@ -128,9 +150,14 @@
 
 ## Open decisions to resolve just-in-time
 
-- Modal submission interface and how to inspect/reconcile running jobs; callback retry strategy and exact API behavior.
-- GPU selection, cold-start tradeoff, `max_containers`, actual SAM3 model footprint and prompt/mask quality.
+- GPU selection after first Modal benchmarks; cold-start tradeoff and actual SAM3 VRAM footprint (start with one CUDA SKU, `max_containers=2`).
 - Render region vs Supabase region, instance sizes and current pricing; free plans may sleep/pause and are not suitable for reliable background dispatch.
 - Telegram caption UX, upload limits, image resizing, maximum queue age and retry schedule.
-- Callback authentication approach; whether to use direct R2 credentials or signed URLs for Modal.
 - V2 authentication provider, web idempotency scope and whether to keep any metadata after image expiration.
+
+### Resolved in Phase 2 (see [`PHASE_2.md`](PHASE_2.md))
+
+- Modal invocation: deploy app `skoka-inference`, function `run_job`; NestJS will use `Function.from_name(...).spawn(...)` and store `object_id` as `modal_call_id`.
+- Callbacks: Bearer + HMAC-SHA256 (`X-Skoka-Timestamp`, `X-Skoka-Signature`); bounded retries on 5xx/network/429; NestJS must treat delivery as at-least-once and key on active `attemptId`.
+- R2: direct scoped credentials in Modal Secret `skoka-dev` / env (not signed URLs for the worker).
+- Local Docker Compose: Phase 3 with NestJS + Postgres 17; Python stays out of Compose.
