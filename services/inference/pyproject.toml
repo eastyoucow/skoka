@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skoka-inference"
+version = "0.1.0"
+description = "Local SAM3 segmentation and mask overlay for Skoka"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "torch==2.14.1",
+  "torchvision==0.29.1",
+  "transformers==5.19.0",
+  "Pillow==11.3.0",
+  "numpy==2.5.3",
+  "python-dotenv==1.2.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.4.2",
+]
+
+[project.scripts]
+skoka-inference = "inference.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+  "integration: real SAM3 model; requires HF_TOKEN and a usable device",
+]
+addopts = "-m 'not integration'"
