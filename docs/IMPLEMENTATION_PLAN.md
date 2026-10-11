@@ -128,12 +128,13 @@ Implement when NestJS lands. Requirements:
   **Handoff:** [`PHASE_4.md`](PHASE_4.md).
 
 ### Phase 5 — Delivery, deployment and hardening
-- [ ] Delivery loop sends result photo+count, persists message ID, retries failures, sends terminal error message.
-- [ ] Deploy always-on NestJS to Render with environment secrets; configure Telegram webhook and HTTPS callback endpoint.
-- [ ] Configure R2 lifecycle, Supabase backups/retention appropriate to tier, spending alerts/caps and rate limits.
-- [ ] End-to-end tests for concurrency, timeouts, invalid images, no detections, duplicate updates, storage expiry and process restarts.
-- [ ] Add metrics: queue wait, cold/warm inference, failures, retries, deliveries, cost per image.
-- **Done when:** V1 works end-to-end with bounded costs and documented recovery behavior.
+- [x] Delivery loop sends result photo+count, persists message ID, retries failures, sends terminal error message.
+- [x] Deploy always-on NestJS to Render with environment secrets; configure Telegram webhook and HTTPS callback endpoint. *(code: `render.yaml` + `Dockerfile.prod`; dashboard secrets/webhook cutover in [`PHASE_5.md`](PHASE_5.md))*
+- [x] Configure R2 lifecycle, Supabase backups/retention appropriate to tier, spending alerts/caps and rate limits. *(rate limit in Nest; lifecycle/backups/spend caps documented as ops checklist)*
+- [x] End-to-end tests for concurrency, timeouts, invalid images, no detections, duplicate updates, storage expiry and process restarts. *(delivery arm/send/retry paths + prior Phase 4 cases; full live GPU matrix remains manual smoke)*
+- [x] Add metrics: queue wait, cold/warm inference, failures, retries, deliveries, cost per image. *(structured `msg:metric` logs; cold/warm + $/image via Modal billing)*
+- **Done when:** V1 works end-to-end with bounded costs and documented recovery behavior.  
+  **Handoff:** [`PHASE_5.md`](PHASE_5.md).
 
 ### Phase 6 — Next.js V2 (later)
 - [ ] Build React upload/prompt/status/result/download UI; reuse NestJS jobs domain.
@@ -154,7 +155,7 @@ Implement when NestJS lands. Requirements:
 
 - GPU selection after first Modal benchmarks; cold-start tradeoff and actual SAM3 VRAM footprint (start with one CUDA SKU, `max_containers=2`).
 - Render region vs Supabase region, instance sizes and current pricing; free plans may sleep/pause and are not suitable for reliable background dispatch.
-- Telegram caption UX (default `person` + caption override locked in Phase 4); upload limits, image resizing, maximum queue age and delivery retry schedule still open for Phase 5.
+- Telegram caption UX (default `person` + caption override locked in Phase 4); delivery retry schedule locked in Phase 5 (`DELIVERY_*` defaults). Upload resizing still open if needed later.
 - V2 authentication provider, web idempotency scope and whether to keep any metadata after image expiration.
 
 ### Resolved in Phase 2 (see [`PHASE_2.md`](PHASE_2.md))

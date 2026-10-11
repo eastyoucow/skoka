@@ -1,6 +1,6 @@
 # Phase 4 — Telegram + Modal dispatch + signed callbacks + recovery (handoff)
 
-Status: **complete — ready for Phase 5** (delivery loop, Render deploy, hardening).
+Status: **complete** — Phase 5 delivery/Render handoff: [`PHASE_5.md`](PHASE_5.md).
 
 NestJS accepts Telegram photos, queues jobs to R2, dispatches to Modal `run_job`, accepts HMAC callbacks, and recovers expired leases. Jobs can reach **`COMPLETED`**. Sending the result photo on Telegram is **not implemented** — that is Phase 5.
 

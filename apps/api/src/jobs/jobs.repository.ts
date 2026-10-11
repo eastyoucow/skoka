@@ -475,17 +475,192 @@ export class JobsRepository {
     });
   }
 
-  /** Fail RECEIVED jobs that never got input before deadline. */
+  /**
+   * Fail RECEIVED jobs that never got input before deadline.
+   * Arms PENDING deliveries so the delivery loop can notify once.
+   */
   async failStaleReceived(): Promise<number> {
-    const result = await this.jobs
-      .createQueryBuilder()
-      .update(Job)
-      .set({ status: JobStatus.FAILED })
-      .where('status = :status', { status: JobStatus.RECEIVED })
-      .andWhere('deadline_at IS NOT NULL')
-      .andWhere('deadline_at < NOW()')
-      .execute();
-    return result.affected ?? 0;
+    return this.dataSource.transaction(async (manager) => {
+      const rows: Array<{ id: string }> = await manager.query(
+        `
+        SELECT id FROM jobs
+        WHERE status = $1
+          AND deadline_at IS NOT NULL
+          AND deadline_at < NOW()
+        ORDER BY deadline_at ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 50
+        `,
+        [JobStatus.RECEIVED],
+      );
+
+      let handled = 0;
+      for (const row of rows) {
+        const job = await manager.findOneOrFail(Job, { where: { id: row.id } });
+        if (job.status !== JobStatus.RECEIVED) {
+          continue;
+        }
+        assertJobTransition(job.status, JobStatus.FAILED);
+        job.status = JobStatus.FAILED;
+        await manager.save(job);
+        await manager
+          .createQueryBuilder()
+          .update(Delivery)
+          .set({ nextRetryAt: new Date() })
+          .where('job_id = :jobId', { jobId: job.id })
+          .andWhere('status = :status', { status: DeliveryStatus.PENDING })
+          .execute();
+        handled += 1;
+      }
+      return handled;
+    });
+  }
+
+  /**
+   * Claim a PENDING delivery ready for send.
+   * Short transaction with SKIP LOCKED — no network I/O inside.
+   */
+  async claimPendingDelivery(leaseMs: number): Promise<Delivery | null> {
+    return this.dataSource.transaction(async (manager) => {
+      const rows: Array<{ id: string }> = await manager.query(
+        `
+        SELECT id FROM deliveries
+        WHERE status = $1
+          AND next_retry_at IS NOT NULL
+          AND next_retry_at <= NOW()
+          AND (lease_until IS NULL OR lease_until < NOW())
+        ORDER BY next_retry_at ASC, created_at ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 1
+        `,
+        [DeliveryStatus.PENDING],
+      );
+
+      if (!rows.length) {
+        return null;
+      }
+
+      const delivery = await manager.findOneOrFail(Delivery, {
+        where: { id: rows[0].id },
+      });
+      delivery.status = DeliveryStatus.SENDING;
+      delivery.attempts += 1;
+      delivery.leaseUntil = new Date(Date.now() + leaseMs);
+      delivery.nextRetryAt = null;
+      return manager.save(delivery);
+    });
+  }
+
+  async markDeliverySent(
+    deliveryId: string,
+    externalMessageId: string,
+  ): Promise<Delivery> {
+    return this.dataSource.transaction(async (manager) => {
+      const delivery = await manager.findOne(Delivery, {
+        where: { id: deliveryId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!delivery) {
+        throw new Error(`Delivery not found: ${deliveryId}`);
+      }
+      if (delivery.status === DeliveryStatus.SENT) {
+        return delivery;
+      }
+      delivery.status = DeliveryStatus.SENT;
+      delivery.externalMessageId = externalMessageId;
+      delivery.leaseUntil = null;
+      delivery.nextRetryAt = null;
+      return manager.save(delivery);
+    });
+  }
+
+  /**
+   * After a send failure: backoff to PENDING or terminal FAILED.
+   * Never touches job / inference state.
+   */
+  async markDeliveryRetryOrFail(params: {
+    deliveryId: string;
+    maxAttempts: number;
+    retryBackoffMs: number;
+    error?: string;
+  }): Promise<{ delivery: Delivery; terminal: boolean }> {
+    return this.dataSource.transaction(async (manager) => {
+      const delivery = await manager.findOne(Delivery, {
+        where: { id: params.deliveryId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!delivery) {
+        throw new Error(`Delivery not found: ${params.deliveryId}`);
+      }
+      if (
+        delivery.status === DeliveryStatus.SENT ||
+        delivery.status === DeliveryStatus.FAILED
+      ) {
+        return {
+          delivery,
+          terminal: delivery.status === DeliveryStatus.FAILED,
+        };
+      }
+
+      const canRetry = delivery.attempts < params.maxAttempts;
+      if (canRetry) {
+        delivery.status = DeliveryStatus.PENDING;
+        delivery.leaseUntil = null;
+        delivery.nextRetryAt = new Date(
+          Date.now() +
+            params.retryBackoffMs * Math.max(1, delivery.attempts),
+        );
+        await manager.save(delivery);
+        return { delivery, terminal: false };
+      }
+
+      delivery.status = DeliveryStatus.FAILED;
+      delivery.leaseUntil = null;
+      delivery.nextRetryAt = null;
+      await manager.save(delivery);
+      return { delivery, terminal: true };
+    });
+  }
+
+  /**
+   * Recover deliveries stuck in SENDING with expired leases
+   * (crash mid-send). Returns them to PENDING for retry.
+   */
+  async recoverExpiredDeliveryLeases(): Promise<number> {
+    return this.dataSource.transaction(async (manager) => {
+      const rows: Array<{ id: string }> = await manager.query(
+        `
+        SELECT id FROM deliveries
+        WHERE status = $1
+          AND lease_until IS NOT NULL
+          AND lease_until < NOW()
+        ORDER BY lease_until ASC
+        FOR UPDATE SKIP LOCKED
+        LIMIT 20
+        `,
+        [DeliveryStatus.SENDING],
+      );
+
+      let handled = 0;
+      for (const row of rows) {
+        const delivery = await manager.findOneOrFail(Delivery, {
+          where: { id: row.id },
+        });
+        if (delivery.status !== DeliveryStatus.SENDING) {
+          continue;
+        }
+        delivery.status = DeliveryStatus.PENDING;
+        delivery.leaseUntil = null;
+        delivery.nextRetryAt = new Date();
+        await manager.save(delivery);
+        handled += 1;
+      }
+      return handled;
+    });
+  }
+
+  findDeliveryByJobId(jobId: string): Promise<Delivery | null> {
+    return this.deliveries.findOne({ where: { jobId } });
   }
 
   private async nextAttemptNumber(

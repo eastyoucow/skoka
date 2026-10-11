@@ -1,11 +1,9 @@
 # Skoka API (NestJS)
 
-Phase 4: Postgres (TypeORM), Cloudflare R2, Telegram webhook, Modal dispatch, signed callbacks, recovery loops.
+Phase 5: Postgres (TypeORM), Cloudflare R2, Telegram webhook + **result delivery**, Modal dispatch, signed callbacks, recovery, Render prod image.
 
-Handoff: [`docs/PHASE_4.md`](../../docs/PHASE_4.md).  
-Modal / callback contracts: [`docs/PHASE_2.md`](../../docs/PHASE_2.md).
-
-Jobs can reach **`COMPLETED`**. Sending the result photo on Telegram is **Phase 5**.
+Handoff: [`docs/PHASE_5.md`](../../docs/PHASE_5.md).  
+Prior: [`docs/PHASE_4.md`](../../docs/PHASE_4.md), [`docs/PHASE_2.md`](../../docs/PHASE_2.md).
 
 ## Setup
 
@@ -13,7 +11,7 @@ Jobs can reach **`COMPLETED`**. Sending the result photo on Telegram is **Phase 
 cd apps/api
 cp .env.example .env
 # Fill R2_*, CALLBACK_SHARED_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
-# PUBLIC_BASE_URL (HTTPS tunnel or deploy URL), and MODAL_TOKEN_* for Docker
+# PUBLIC_BASE_URL (HTTPS tunnel or Render URL), and MODAL_TOKEN_* for Docker/prod
 npm ci
 npm run start:dev
 ```
@@ -27,11 +25,12 @@ cp apps/api/.env.example apps/api/.env   # once; add secrets
 docker compose up --build
 ```
 
-Compose overrides DB to the `postgres` service. Modal JS SDK needs `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` inside the container (host `~/.modal.toml` is not mounted by default).
+Compose uses the **dev** `Dockerfile` (hot reload). Production uses `Dockerfile.prod` via [`render.yaml`](../../render.yaml).
+
+Modal JS SDK needs `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` inside the container (host `~/.modal.toml` is not mounted by default).
 
 - API: http://localhost:3000  
 - Postgres 17: `localhost:5432` (user/password/db: `skoka`)  
-- Hot reload via bind-mounted `apps/api/src`  
 
 ### Telegram webhook
 
@@ -42,7 +41,11 @@ curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
   -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
 ```
 
-UX: send a photo; optional caption is the label (default `person`).
+UX: send a photo; optional caption is the label (default `person`). After processing you receive the masked result photo + count (or a short failure message).
+
+### Render
+
+See [`docs/PHASE_5.md`](../../docs/PHASE_5.md). Blueprint: [`render.yaml`](../../render.yaml). Image: `Dockerfile.prod`.
 
 ### Dependency pins (do not casually bump)
 
@@ -62,7 +65,7 @@ UX: send a photo; optional caption is the label (default `person`).
 | GET | `/health/storage` | R2 probe (non-gating) |
 | POST | `/api/jobs` | multipart create (dev/foundation) |
 | GET | `/api/jobs/:id` | Job by id |
-| POST | `/webhooks/telegram` | Telegram updates |
+| POST | `/webhooks/telegram` | Telegram updates (rate-limited) |
 | POST | `/internal/jobs/:id/complete` | Modal success callback |
 | POST | `/internal/jobs/:id/fail` | Modal failure callback |
 
@@ -70,6 +73,7 @@ UX: send a photo; optional caption is the label (default `person`).
 
 ```bash
 npm test
+# stop Compose API first if DB e2e races live pollers
 API_RUN_DB_E2E=1 npm run test:e2e
 ```
 
@@ -78,11 +82,12 @@ API_RUN_DB_E2E=1 npm run test:e2e
 ```
 src/
   config/           env + validation
+  common/           rate-limit guard
   database/         TypeORM options, CLI DataSource
   jobs/             entities, repository, create/get API
-  telegram/         webhook + Bot API client
+  telegram/         webhook + Bot API client (sendPhoto)
   modal/            Modal spawn client
-  orchestration/    dispatcher + recovery loops
+  orchestration/    dispatcher + recovery + delivery loops
   internal/         HMAC callback receivers
   storage/          R2 adapter + image validation
   health/

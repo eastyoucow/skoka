@@ -1,0 +1,75 @@
+# Render Blueprint — Skoka NestJS API (Phase 5).
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After first deploy:
+# 1. Copy the service HTTPS URL into PUBLIC_BASE_URL (Dashboard → Environment).
+# 2. Redeploy (or restart) so dispatcher/callbacks use the real origin.
+# 3. setWebhook to ${PUBLIC_BASE_URL}/webhooks/telegram with TELEGRAM_WEBHOOK_SECRET.
+# 4. Confirm Modal secret skoka-dev shares CALLBACK_SHARED_SECRET + R2 keys.
+#
+# Use a paid always-on plan so in-process dispatcher/delivery/recovery keep running.
+#
+# Region note: prefer `frankfurt` when Supabase is eu-west-1 (lower DB RTT).
+# Render cannot change region after create — existing oregon services must be
+# recreated in frankfurt to move. Live prod URL today: https://skoka.onrender.com
+
+services:
+  - type: web
+    name: skoka-api
+    runtime: docker
+    plan: starter
+    # Preferred for new services next to Supabase eu-west-1. Existing oregon
+    # service (skoka.onrender.com) cannot be moved in-place.
+    region: frankfurt
+    dockerfilePath: ./apps/api/Dockerfile.prod
+    dockerContext: ./apps/api
+    healthCheckPath: /health
+    # Keep one instance for V1; SKIP LOCKED allows later scale-out.
+    numInstances: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: RUN_MIGRATIONS
+        value: "true"
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_POOL_MAX
+        value: "5"
+      - key: DISPATCHER_ENABLED
+        value: "true"
+      - key: RECOVERY_ENABLED
+        value: "true"
+      - key: DELIVERY_ENABLED
+        value: "true"
+      - key: MODAL_APP_NAME
+        value: skoka-inference
+      - key: MODAL_FUNCTION_NAME
+        value: run_job
+      # Set these in the Render Dashboard (secret values — do not commit):
+      - key: DATABASE_URL
+        sync: false
+      # Example prod value: https://skoka.onrender.com
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: CALLBACK_SHARED_SECRET
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: MODAL_TOKEN_ID
+        sync: false
+      - key: MODAL_TOKEN_SECRET
+        sync: false

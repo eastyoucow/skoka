@@ -58,13 +58,15 @@ export class RecoveryService implements OnModuleInit, OnModuleDestroy {
         retryBackoffMs,
       });
       const stale = await this.jobs.failStaleReceived();
+      const deliveryLeases = await this.jobs.recoverExpiredDeliveryLeases();
 
-      if (recovered > 0 || stale > 0) {
+      if (recovered > 0 || stale > 0 || deliveryLeases > 0) {
         this.logger.log(
           JSON.stringify({
             msg: 'recovery_tick',
             expiredLeasesHandled: recovered,
             staleReceivedFailed: stale,
+            expiredDeliveryLeasesHandled: deliveryLeases,
           }),
         );
       }

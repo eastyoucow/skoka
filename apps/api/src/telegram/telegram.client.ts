@@ -41,12 +41,10 @@ export class TelegramClient implements OnModuleInit {
     return Buffer.from(ab);
   }
 
+  /** Fire-and-forget UX helper (acks, /help). Delivery path should use sendText. */
   async sendMessage(chatId: number | string, text: string): Promise<void> {
     try {
-      await this.callApi('sendMessage', {
-        chat_id: chatId,
-        text,
-      });
+      await this.sendText(chatId, text);
     } catch (err) {
       this.logger.warn(
         JSON.stringify({
@@ -56,6 +54,59 @@ export class TelegramClient implements OnModuleInit {
         }),
       );
     }
+  }
+
+  /** Throws on failure; returns Telegram message_id for delivery tracking. */
+  async sendText(
+    chatId: number | string,
+    text: string,
+  ): Promise<{ messageId: string }> {
+    const data = await this.callApi<{ result: { message_id: number } }>(
+      'sendMessage',
+      {
+        chat_id: chatId,
+        text,
+      },
+    );
+    return { messageId: String(data.result.message_id) };
+  }
+
+  /** Multipart sendPhoto; throws on failure. */
+  async sendPhoto(
+    chatId: number | string,
+    photo: Buffer,
+    caption?: string,
+    filename = 'result.png',
+  ): Promise<{ messageId: string }> {
+    if (!this.apiBase) {
+      throw new Error('TELEGRAM_BOT_TOKEN is not set');
+    }
+    const form = new FormData();
+    form.append('chat_id', String(chatId));
+    form.append(
+      'photo',
+      new Blob([new Uint8Array(photo)], { type: 'image/png' }),
+      filename,
+    );
+    if (caption) {
+      form.append('caption', caption.slice(0, 1024));
+    }
+
+    const res = await fetch(`${this.apiBase}/sendPhoto`, {
+      method: 'POST',
+      body: form,
+    });
+    const json = (await res.json()) as {
+      ok: boolean;
+      description?: string;
+      result?: { message_id: number };
+    };
+    if (!res.ok || !json.ok || !json.result) {
+      throw new Error(
+        `Telegram API sendPhoto failed: ${json.description ?? res.status}`,
+      );
+    }
+    return { messageId: String(json.result.message_id) };
   }
 
   private async callApi<T = unknown>(

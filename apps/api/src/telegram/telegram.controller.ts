@@ -7,10 +7,12 @@ import {
   Post,
   Req,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
 import { Request } from 'express';
+import { SimpleRateLimitGuard } from '../common/simple-rate-limit.guard';
 import { TelegramService } from './telegram.service';
 import { TelegramUpdate } from './telegram.types';
 
@@ -24,6 +26,7 @@ export class TelegramController {
   ) {}
 
   @Post()
+  @UseGuards(SimpleRateLimitGuard)
   @HttpCode(HttpStatus.OK)
   async handle(
     @Req() req: Request,

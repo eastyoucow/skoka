@@ -1,14 +1,16 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { createHmac } from 'crypto';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { DeliveryService } from '../src/orchestration/delivery.service';
 import { DispatcherService } from '../src/orchestration/dispatcher.service';
 import { RecoveryService } from '../src/orchestration/recovery.service';
 import { ModalInferenceClient } from '../src/modal/modal.client';
 import { R2StorageService } from '../src/storage/r2.storage';
-import { JobSource } from '../src/jobs/entities/job-status';
+import { DeliveryStatus, JobSource, JobStatus } from '../src/jobs/entities/job-status';
 import { JobsRepository } from '../src/jobs/jobs.repository';
 import { TelegramClient } from '../src/telegram/telegram.client';
 
@@ -23,7 +25,10 @@ function signBody(secret: string, timestamp: string, rawBody: string): string {
 (runDbTests ? describe : describe.skip)('API e2e (Postgres)', () => {
   let app: INestApplication<App>;
   const putObject = jest.fn().mockResolvedValue({ key: 'x', bucket: 'b' });
+  const getObject = jest.fn().mockResolvedValue(Buffer.from('fake-png'));
   const spawn = jest.fn().mockResolvedValue({ callId: 'fc-e2e-1' });
+  const sendPhoto = jest.fn().mockResolvedValue({ messageId: '501' });
+  const sendText = jest.fn().mockResolvedValue({ messageId: '502' });
   const callbackSecret = 'e2e-callback-secret';
   const webhookSecret = 'e2e-telegram-secret';
 
@@ -34,6 +39,7 @@ function signBody(secret: string, timestamp: string, rawBody: string): string {
     process.env.PUBLIC_BASE_URL = 'https://api.example.com';
     process.env.DISPATCHER_ENABLED = 'false';
     process.env.RECOVERY_ENABLED = 'false';
+    process.env.DELIVERY_ENABLED = 'false';
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -42,7 +48,7 @@ function signBody(secret: string, timestamp: string, rawBody: string): string {
       .useValue({
         isConfigured: () => true,
         putObject,
-        getObject: jest.fn(),
+        getObject,
         deleteObject: jest.fn(),
         ping: jest.fn().mockResolvedValue(true),
         onModuleInit: () => undefined,
@@ -66,6 +72,8 @@ function signBody(secret: string, timestamp: string, rawBody: string): string {
           Buffer.from([0xff, 0xd8, 0xff, 0xd9, ...Buffer.alloc(28, 1)]),
         ),
         sendMessage: jest.fn().mockResolvedValue(undefined),
+        sendPhoto,
+        sendText,
       })
       .overrideProvider(DispatcherService)
       .useValue({
@@ -74,6 +82,12 @@ function signBody(secret: string, timestamp: string, rawBody: string): string {
         tick: jest.fn(),
       })
       .overrideProvider(RecoveryService)
+      .useValue({
+        onModuleInit: () => undefined,
+        onModuleDestroy: () => undefined,
+        tick: jest.fn(),
+      })
+      .overrideProvider(DeliveryService)
       .useValue({
         onModuleInit: () => undefined,
         onModuleDestroy: () => undefined,
@@ -267,7 +281,100 @@ function signBody(secret: string, timestamp: string, rawBody: string): string {
     expect(job!.status).toBe('COMPLETED');
     expect(job!.objectCount).toBe(3);
     expect(job!.outputKey).toBe(outputKey);
+
+    const delivery = await jobs.findDeliveryByJobId(jobId);
+    expect(delivery).toBeTruthy();
+    expect(delivery!.status).toBe(DeliveryStatus.PENDING);
+    expect(delivery!.nextRetryAt).toBeTruthy();
   });
+
+  it(
+    'delivery loop sends photo after completion and does not re-dispatch on send failure',
+    async () => {
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9, ...Buffer.alloc(28, 4)]);
+    const create = await request(app.getHttpServer())
+      .post('/api/jobs')
+      .field('prompt', 'apple')
+      .field('source', 'telegram')
+      .field('externalRequestId', `del-${Date.now()}`)
+      .field('channel', 'telegram')
+      .field('recipientId', '777')
+      .attach('file', jpeg, { filename: 't.jpg', contentType: 'image/jpeg' });
+
+    const jobId = create.body.id as string;
+    const jobs = app.get(JobsRepository);
+    const claimed = await jobs.claimQueuedJobById(jobId, 60_000);
+    const attemptId = claimed!.attempt.id;
+    const outputKey = `jobs/${jobId}/attempts/${attemptId}/result.png`;
+    const completeBody = JSON.stringify({ attemptId, count: 2, outputKey });
+    const ts = String(Math.floor(Date.now() / 1000));
+    const sig = signBody(callbackSecret, ts, completeBody);
+
+    await request(app.getHttpServer())
+      .post(`/internal/jobs/${jobId}/complete`)
+      .set('Authorization', `Bearer ${callbackSecret}`)
+      .set('X-Skoka-Timestamp', ts)
+      .set('X-Skoka-Signature', sig)
+      .set('Content-Type', 'application/json')
+      .send(completeBody)
+      .expect(200);
+
+    const realDelivery = new DeliveryService(
+      jobs,
+      app.get(R2StorageService),
+      app.get(TelegramClient),
+      app.get(ConfigService),
+    );
+    await realDelivery.tick();
+
+    expect(getObject).toHaveBeenCalledWith(outputKey);
+    expect(sendPhoto).toHaveBeenCalled();
+    const delivery = await jobs.findDeliveryByJobId(jobId);
+    expect(delivery!.status).toBe(DeliveryStatus.SENT);
+    expect(delivery!.externalMessageId).toBe('501');
+
+    // Send failure path: arm another job, force Telegram error, ensure job stays COMPLETED.
+    sendPhoto.mockRejectedValueOnce(new Error('timeout'));
+    const create2 = await request(app.getHttpServer())
+      .post('/api/jobs')
+      .field('prompt', 'apple')
+      .field('source', 'telegram')
+      .field('externalRequestId', `del-fail-${Date.now()}`)
+      .field('channel', 'telegram')
+      .field('recipientId', '778')
+      .attach('file', jpeg, { filename: 't.jpg', contentType: 'image/jpeg' });
+    const jobId2 = create2.body.id as string;
+    const claimed2 = await jobs.claimQueuedJobById(jobId2, 60_000);
+    const attemptId2 = claimed2!.attempt.id;
+    const outputKey2 = `jobs/${jobId2}/attempts/${attemptId2}/result.png`;
+    const body2 = JSON.stringify({
+      attemptId: attemptId2,
+      count: 1,
+      outputKey: outputKey2,
+    });
+    const ts2 = String(Math.floor(Date.now() / 1000));
+    const sig2 = signBody(callbackSecret, ts2, body2);
+    await request(app.getHttpServer())
+      .post(`/internal/jobs/${jobId2}/complete`)
+      .set('Authorization', `Bearer ${callbackSecret}`)
+      .set('X-Skoka-Timestamp', ts2)
+      .set('X-Skoka-Signature', sig2)
+      .set('Content-Type', 'application/json')
+      .send(body2)
+      .expect(200);
+
+    const spawnCallsBefore = spawn.mock.calls.length;
+    await realDelivery.tick();
+    const job2 = await jobs.findById(jobId2);
+    expect(job2!.status).toBe(JobStatus.COMPLETED);
+    const delivery2 = await jobs.findDeliveryByJobId(jobId2);
+    expect(delivery2!.status).toBe(DeliveryStatus.PENDING);
+    expect(delivery2!.nextRetryAt).toBeTruthy();
+    // Delivery failure must never trigger Modal again.
+    expect(spawn.mock.calls.length).toBe(spawnCallsBefore);
+  },
+    30_000,
+  );
 
   it('ignores complete callback that arrives for non-active attempt (callback-before-ack race)', async () => {
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9, ...Buffer.alloc(28, 3)]);

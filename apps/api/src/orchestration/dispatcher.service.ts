@@ -124,6 +124,17 @@ export class DispatcherService implements OnModuleInit, OnModuleDestroy {
           modalCallId: callId,
         }),
       );
+      this.logger.log(
+        JSON.stringify({
+          msg: 'metric',
+          metric: 'job_dispatched',
+          jobId: job.id,
+          attemptId: attempt.id,
+          queueWaitMs: job.createdAt
+            ? Date.now() - job.createdAt.getTime()
+            : undefined,
+        }),
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(

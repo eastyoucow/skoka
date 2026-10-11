@@ -10,6 +10,9 @@ async function bootstrap() {
     rawBody: true,
   });
 
+  // Render (and similar) terminate TLS and forward client IP.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

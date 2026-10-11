@@ -47,6 +47,22 @@ export default () => ({
     enabled: (process.env.RECOVERY_ENABLED ?? 'true').toLowerCase() !== 'false',
     pollIntervalMs: parseInt(process.env.RECOVERY_POLL_MS ?? '10000', 10),
   },
+  delivery: {
+    enabled: (process.env.DELIVERY_ENABLED ?? 'true').toLowerCase() !== 'false',
+    pollIntervalMs: parseInt(process.env.DELIVERY_POLL_MS ?? '2000', 10),
+    maxConcurrent: parseInt(process.env.DELIVERY_MAX_CONCURRENT ?? '4', 10),
+    /** Lease while Telegram send is in flight. */
+    leaseMs: parseInt(process.env.DELIVERY_LEASE_MS ?? '60000', 10),
+    maxAttempts: parseInt(process.env.DELIVERY_MAX_ATTEMPTS ?? '5', 10),
+    retryBackoffMs: parseInt(process.env.DELIVERY_RETRY_BACKOFF_MS ?? '10000', 10),
+  },
+  /** Soft per-IP rate limit for Telegram webhook (in-memory; single instance). */
+  rateLimit: {
+    telegramWebhookPerMinute: parseInt(
+      process.env.RATE_LIMIT_TELEGRAM_PER_MINUTE ?? '60',
+      10,
+    ),
+  },
   /** Shared with Modal secret skoka-dev — Bearer + HMAC callback auth. */
   callbackSharedSecret: process.env.CALLBACK_SHARED_SECRET ?? '',
   callbackMaxSkewSeconds: parseInt(process.env.CALLBACK_MAX_SKEW_SECONDS ?? '300', 10),
