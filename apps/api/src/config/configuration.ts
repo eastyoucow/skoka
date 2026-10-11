@@ -2,6 +2,8 @@ export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   nodeEnv: process.env.NODE_ENV ?? 'development',
   runMigrations: (process.env.RUN_MIGRATIONS ?? 'true').toLowerCase() !== 'false',
+  /** Public API origin for Modal callbacks (no path), e.g. https://api.example.com */
+  publicBaseUrl: (process.env.PUBLIC_BASE_URL ?? '').replace(/\/$/, ''),
   database: {
     url: process.env.DATABASE_URL,
     host: process.env.DATABASE_HOST ?? 'localhost',
@@ -29,7 +31,36 @@ export default () => ({
   jobs: {
     /** Max age for processing before deadline; must stay below R2 ~24h lifecycle. */
     deadlineHours: parseInt(process.env.JOB_DEADLINE_HOURS ?? '12', 10),
+    maxAttempts: parseInt(process.env.JOB_MAX_ATTEMPTS ?? '3', 10),
+    /** Lease held while Modal runs; Modal function timeout is 600s. */
+    leaseMs: parseInt(process.env.JOB_LEASE_MS ?? String(12 * 60 * 1000), 10),
+    /** Base backoff when re-queuing after lease expiry / submit failure. */
+    retryBackoffMs: parseInt(process.env.JOB_RETRY_BACKOFF_MS ?? '15000', 10),
   },
-  /** Shared with Modal; used in Phase 4 callback auth. Documented here for env parity. */
+  dispatcher: {
+    enabled: (process.env.DISPATCHER_ENABLED ?? 'true').toLowerCase() !== 'false',
+    pollIntervalMs: parseInt(process.env.DISPATCHER_POLL_MS ?? '2000', 10),
+    /** Max in-flight Modal submits from this process (matches Modal max_containers). */
+    maxConcurrent: parseInt(process.env.DISPATCHER_MAX_CONCURRENT ?? '2', 10),
+  },
+  recovery: {
+    enabled: (process.env.RECOVERY_ENABLED ?? 'true').toLowerCase() !== 'false',
+    pollIntervalMs: parseInt(process.env.RECOVERY_POLL_MS ?? '10000', 10),
+  },
+  /** Shared with Modal secret skoka-dev — Bearer + HMAC callback auth. */
   callbackSharedSecret: process.env.CALLBACK_SHARED_SECRET ?? '',
+  callbackMaxSkewSeconds: parseInt(process.env.CALLBACK_MAX_SKEW_SECONDS ?? '300', 10),
+  modal: {
+    appName: process.env.MODAL_APP_NAME ?? 'skoka-inference',
+    functionName: process.env.MODAL_FUNCTION_NAME ?? 'run_job',
+    tokenId: process.env.MODAL_TOKEN_ID ?? '',
+    tokenSecret: process.env.MODAL_TOKEN_SECRET ?? '',
+  },
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+    /** Must match secret_token set on setWebhook. */
+    webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET ?? '',
+    /** Default SAM3 prompt when photo has no caption (V1). */
+    defaultPrompt: process.env.TELEGRAM_DEFAULT_PROMPT ?? 'person',
+  },
 });

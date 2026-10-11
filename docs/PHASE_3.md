@@ -1,8 +1,8 @@
 # Phase 3 — NestJS + Supabase/Postgres + R2 + local Docker (handoff)
 
-Status: **complete — ready for Phase 4** (Telegram + Modal dispatch + signed callbacks + recovery).
+Status: **complete** (superseded for next work by [`PHASE_4.md`](PHASE_4.md) → Phase 5).
 
-NestJS owns job persistence, R2 input upload, and health. Jobs stop at **`QUEUED`**. Modal spawn, Telegram, callback HTTP receivers, recovery, and delivery loops are **not** implemented yet.
+NestJS owns job persistence, R2 input upload, and health. Phase 3 jobs stopped at **`QUEUED`**. Phase 4 added Telegram, Modal dispatch, callbacks, and recovery through **`COMPLETED`**. Delivery of the result photo is Phase 5.
 
 Full product plan: [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).  
 Phase 2 Modal/callback/R2 contracts: [`PHASE_2.md`](PHASE_2.md).  

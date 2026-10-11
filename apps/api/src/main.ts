@@ -4,8 +4,10 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  // rawBody required for Modal callback HMAC verification.
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'error', 'warn', 'debug'],
+    rawBody: true,
   });
 
   app.useGlobalPipes(

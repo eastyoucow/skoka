@@ -119,12 +119,13 @@ Implement when NestJS lands. Requirements:
 **Constraints:** Do not containerize Python/SAM3 (runs locally or on Modal). Do not add MinIO — use a real Cloudflare R2 development bucket. Keep the setup simple and suitable for local development. Preserve the existing monorepo structure and package management. Do not modify application business logic unless necessary for Docker compatibility. Do not commit secrets or real credentials.
 
 ### Phase 4 — Telegram + reliable dispatch/callbacks
-- [ ] Telegram webhook secret validation, caption/command UX, file download, deduplication by `update_id`, immediate acknowledgement.
-- [ ] PostgreSQL dispatcher: claim/lease with `SKIP LOCKED`, Modal submit, attempt tracking, bounded concurrency.
-- [ ] Callback auth, active-attempt validation, atomic completion/failure and delivery activation.
-- [ ] Recovery loop: expired leases, retries/backoff, stale jobs, callback reconciliation, terminal failure.
-- [ ] Tests: repeated Telegram update, concurrent dispatchers, crash after submit, callback before acknowledgement, duplicate/stale callback.
-- **Done when:** a Telegram photo reaches Modal and becomes a completed job, surviving NestJS restarts.
+- [x] Telegram webhook secret validation, caption/command UX, file download, deduplication by `update_id`, immediate acknowledgement.
+- [x] PostgreSQL dispatcher: claim/lease with `SKIP LOCKED`, Modal submit, attempt tracking, bounded concurrency.
+- [x] Callback auth, active-attempt validation, atomic completion/failure and delivery activation.
+- [x] Recovery loop: expired leases, retries/backoff, stale jobs, callback reconciliation, terminal failure.
+- [x] Tests: repeated Telegram update, concurrent dispatchers, crash after submit, callback before acknowledgement, duplicate/stale callback.
+- **Done when:** a Telegram photo reaches Modal and becomes a completed job, surviving NestJS restarts.  
+  **Handoff:** [`PHASE_4.md`](PHASE_4.md).
 
 ### Phase 5 — Delivery, deployment and hardening
 - [ ] Delivery loop sends result photo+count, persists message ID, retries failures, sends terminal error message.
@@ -153,7 +154,7 @@ Implement when NestJS lands. Requirements:
 
 - GPU selection after first Modal benchmarks; cold-start tradeoff and actual SAM3 VRAM footprint (start with one CUDA SKU, `max_containers=2`).
 - Render region vs Supabase region, instance sizes and current pricing; free plans may sleep/pause and are not suitable for reliable background dispatch.
-- Telegram caption UX, upload limits, image resizing, maximum queue age and retry schedule.
+- Telegram caption UX (default `person` + caption override locked in Phase 4); upload limits, image resizing, maximum queue age and delivery retry schedule still open for Phase 5.
 - V2 authentication provider, web idempotency scope and whether to keep any metadata after image expiration.
 
 ### Resolved in Phase 2 (see [`PHASE_2.md`](PHASE_2.md))
@@ -171,3 +172,12 @@ Implement when NestJS lands. Requirements:
 - Supabase: prefer **session pooler** `aws-0-<region>.pooler.supabase.com:5432` with user `postgres.<ref>`; `DATABASE_SSL=true` and `rejectUnauthorized: false`. Direct `db.*` may be IPv6-only.
 - Compose Postgres 17 remains the local default (`DATABASE_HOST=postgres` override). Python/SAM3 never in Compose; no MinIO.
 - Phase 3 HTTP create path ends at job status **`QUEUED`** with R2 `input_key`; dispatcher/Telegram/callbacks are Phase 4.
+
+### Resolved in Phase 4 (see [`PHASE_4.md`](PHASE_4.md))
+
+- Telegram ingress: `POST /webhooks/telegram`, secret header, dedupe on `update_id`, caption prompt (default `person`).
+- Modal from Nest via npm `modal` JS SDK `spawn([payload])`; store `functionCallId` as `modal_call_id`.
+- `PUBLIC_BASE_URL` is API origin for Modal callbacks **and** Telegram webhook target; local ngrok verified end-to-end to `COMPLETED`.
+- Callback receivers implement Phase 2 HMAC contract with Nest `rawBody: true`; active-attempt gate; `outputKey` must match attempt path.
+- In-process dispatcher + recovery (`setInterval`, no `@nestjs/schedule`); delivery **send** deferred to Phase 5 (`deliveries` armed with `next_retry_at` only).
+- Docker Compose needs `MODAL_TOKEN_ID`/`SECRET` (host `~/.modal.toml` not mounted).

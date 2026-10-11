@@ -1,19 +1,19 @@
 # Skoka API (NestJS)
 
-Phase 3 foundations: Postgres (TypeORM), Cloudflare R2, job persistence, local Docker Compose.
+Phase 4: Postgres (TypeORM), Cloudflare R2, Telegram webhook, Modal dispatch, signed callbacks, recovery loops.
 
-Handoff for the next phase: [`docs/PHASE_3.md`](../../docs/PHASE_3.md).  
+Handoff: [`docs/PHASE_4.md`](../../docs/PHASE_4.md).  
 Modal / callback contracts: [`docs/PHASE_2.md`](../../docs/PHASE_2.md).
 
-Modal dispatch and Telegram are **Phase 4**. Jobs created here stop at **`QUEUED`**.
+Jobs can reach **`COMPLETED`**. Sending the result photo on Telegram is **Phase 5**.
 
 ## Setup
 
 ```bash
 cd apps/api
 cp .env.example .env
-# Fill R2_* (same private bucket as services/inference)
-# Optional: point DATABASE_* at Supabase session pooler (see below)
+# Fill R2_*, CALLBACK_SHARED_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
+# PUBLIC_BASE_URL (HTTPS tunnel or deploy URL), and MODAL_TOKEN_* for Docker
 npm ci
 npm run start:dev
 ```
@@ -23,44 +23,26 @@ npm run start:dev
 From repo root:
 
 ```bash
-cp apps/api/.env.example apps/api/.env   # once; add R2_*
+cp apps/api/.env.example apps/api/.env   # once; add secrets
 docker compose up --build
 ```
 
-Compose overrides DB to the `postgres` service even if `.env` has Supabase settings.
+Compose overrides DB to the `postgres` service. Modal JS SDK needs `MODAL_TOKEN_ID` + `MODAL_TOKEN_SECRET` inside the container (host `~/.modal.toml` is not mounted by default).
 
 - API: http://localhost:3000  
 - Postgres 17: `localhost:5432` (user/password/db: `skoka`)  
 - Hot reload via bind-mounted `apps/api/src`  
-- Migrations: entrypoint `npm run migration:run` + Nest `migrationsRun` when `RUN_MIGRATIONS=true`
 
-### Migrations
+### Telegram webhook
 
 ```bash
-npm run migration:run
-npm run migration:show
-npm run migration:revert
-npm run migration:generate -- src/migrations/DescriptiveName
+# PUBLIC_BASE_URL must be HTTPS reachable by Telegram (and by Modal for callbacks)
+curl "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
+  -d "url=${PUBLIC_BASE_URL}/webhooks/telegram" \
+  -d "secret_token=$TELEGRAM_WEBHOOK_SECRET"
 ```
 
-CLI DataSource: `src/database/data-source.ts`.  
-`synchronize` is always **false**.
-
-### Supabase
-
-Prefer **session pooler** (port 5432), not transaction pooler (6543):
-
-```env
-DATABASE_HOST=aws-0-<region>.pooler.supabase.com
-DATABASE_PORT=5432
-DATABASE_USER=postgres.<project-ref>
-DATABASE_PASSWORD=
-DATABASE_NAME=postgres
-DATABASE_SSL=true
-DATABASE_POOL_MAX=5
-```
-
-Direct `db.<ref>.supabase.co` can be IPv6-only. Details: [`docs/PHASE_3.md`](../../docs/PHASE_3.md).
+UX: send a photo; optional caption is the label (default `person`).
 
 ### Dependency pins (do not casually bump)
 
@@ -69,31 +51,20 @@ Direct `db.<ref>.supabase.co` can be IPv6-only. Details: [`docs/PHASE_3.md`](../
 | `typeorm` | `0.3.27` | Nest 11 + current migration tooling |
 | `@nestjs/config` | `4.0.2` | v12 is ESM-only → `ERR_REQUIRE_ESM` under CJS Nest build |
 | `@nestjs/typeorm` | `11.0.0` | Matches TypeORM 0.3 |
+| `modal` | `^0.11` | Official JS SDK for `spawn` |
 
-## Endpoints (Phase 3)
+## Endpoints
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/health` | Liveness |
 | GET | `/health/ready` | Postgres ready |
 | GET | `/health/storage` | R2 probe (non-gating) |
-| POST | `/api/jobs` | multipart: `file` + DTO fields |
+| POST | `/api/jobs` | multipart create (dev/foundation) |
 | GET | `/api/jobs/:id` | Job by id |
-
-DTO fields: `prompt`, `source`, `externalRequestId`, `channel`, `recipientId`.  
-Image is a separate multipart part named **`file`** (Multer), not a DTO property.
-
-```bash
-curl -s -X POST http://localhost:3000/api/jobs \
-  -F prompt=person \
-  -F source=web \
-  -F externalRequestId=demo-1 \
-  -F channel=web \
-  -F recipientId=local \
-  -F file=@./sample.jpg
-```
-
-Expect `status: "QUEUED"` and `inputKey: "jobs/<uuid>/input.<ext>"`.
+| POST | `/webhooks/telegram` | Telegram updates |
+| POST | `/internal/jobs/:id/complete` | Modal success callback |
+| POST | `/internal/jobs/:id/fail` | Modal failure callback |
 
 ## Tests
 
@@ -106,10 +77,14 @@ API_RUN_DB_E2E=1 npm run test:e2e
 
 ```
 src/
-  config/          env + validation
-  database/        TypeORM options, CLI DataSource, migration helper
-  jobs/            entities, repository, create/get API
-  storage/         R2 adapter + image validation
+  config/           env + validation
+  database/         TypeORM options, CLI DataSource
+  jobs/             entities, repository, create/get API
+  telegram/         webhook + Bot API client
+  modal/            Modal spawn client
+  orchestration/    dispatcher + recovery loops
+  internal/         HMAC callback receivers
+  storage/          R2 adapter + image validation
   health/
-  migrations/      TypeORM migrations (compiled with the app)
+  migrations/
 ```

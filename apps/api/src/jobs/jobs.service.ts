@@ -7,7 +7,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { CreateJobDto } from './dto/create-job.dto';
-import { JobStatus } from './entities/job-status';
+import {
+  DeliveryChannel,
+  JobSource,
+  JobStatus,
+} from './entities/job-status';
 import { Job } from './entities/job.entity';
 import { JobsRepository } from './jobs.repository';
 import { R2StorageService } from '../storage/r2.storage';
@@ -15,6 +19,17 @@ import {
   buildInputObjectKey,
   validateImageUpload,
 } from '../storage/file-validation';
+
+export interface CreateWithImageBufferParams {
+  source: JobSource;
+  externalRequestId: string;
+  prompt: string;
+  channel: DeliveryChannel;
+  recipientId: string;
+  buffer: Buffer;
+  mimeType: string;
+  originalName?: string;
+}
 
 @Injectable()
 export class JobsService {
@@ -30,6 +45,25 @@ export class JobsService {
     dto: CreateJobDto,
     file: Express.Multer.File | undefined,
   ): Promise<{ job: Job; created: boolean }> {
+    return this.createWithImageBuffer({
+      source: dto.source,
+      externalRequestId: dto.externalRequestId,
+      prompt: dto.prompt,
+      channel: dto.channel,
+      recipientId: dto.recipientId,
+      buffer: file?.buffer ?? Buffer.alloc(0),
+      mimeType: file?.mimetype ?? '',
+      originalName: file?.originalname,
+    });
+  }
+
+  /**
+   * Shared create path for HTTP multipart and Telegram downloads.
+   * Idempotent on (source, externalRequestId). Ends at QUEUED after R2 put.
+   */
+  async createWithImageBuffer(
+    params: CreateWithImageBufferParams,
+  ): Promise<{ job: Job; created: boolean }> {
     const maxBytes = this.config.get<number>('uploads.maxBytes') ?? 10 * 1024 * 1024;
     const allowedMimeTypes =
       this.config.get<string[]>('uploads.allowedMimeTypes') ?? [
@@ -37,7 +71,15 @@ export class JobsService {
         'image/png',
         'image/webp',
       ];
-    const validated = validateImageUpload(file, { maxBytes, allowedMimeTypes });
+
+    const fakeFile = {
+      buffer: params.buffer,
+      mimetype: params.mimeType,
+      size: params.buffer.length,
+      originalname: params.originalName ?? 'upload.bin',
+    } as Express.Multer.File;
+
+    const validated = validateImageUpload(fakeFile, { maxBytes, allowedMimeTypes });
 
     if (!this.storage.isConfigured()) {
       throw new ServiceUnavailableException('Object storage (R2) is not configured');
@@ -47,11 +89,11 @@ export class JobsService {
     const deadlineAt = new Date(Date.now() + deadlineHours * 60 * 60 * 1000);
 
     const { job, created } = await this.jobs.createReceivedJob({
-      source: dto.source,
-      externalRequestId: dto.externalRequestId,
-      prompt: dto.prompt,
-      channel: dto.channel,
-      recipientId: dto.recipientId,
+      source: params.source,
+      externalRequestId: params.externalRequestId,
+      prompt: params.prompt,
+      channel: params.channel,
+      recipientId: params.recipientId,
       deadlineAt,
     });
 
