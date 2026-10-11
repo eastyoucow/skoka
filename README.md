@@ -4,26 +4,49 @@ Image object counter: given a photo and a text label, count matching instances a
 
 ## Current status
 
-**Phase 2 complete** — Modal worker, R2 I/O, and signed callback client in [`services/inference`](services/inference).  
-NestJS callback endpoints are Phase 4 (Option B: client + mocked tests only).  
-**Next:** Phase 3 — NestJS + Postgres + local Docker Compose (Python stays out of Compose).
+**Phase 3 complete** — NestJS API + TypeORM migrations + Supabase/Compose Postgres + R2 input upload; jobs reach **`QUEUED`**.  
+**Next:** Phase 4 — Telegram webhook, Modal dispatch, signed callbacks, recovery.
 
-Handoffs (read these before starting the next phase):
+Read handoffs **before** starting the next phase (new agent should start here):
 
-- Phase 1 (local SAM3 library): [`docs/PHASE_1.md`](docs/PHASE_1.md)
-- Phase 2 (Modal + R2 + callbacks + decisions): [`docs/PHASE_2.md`](docs/PHASE_2.md)
-- Full phased plan: [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
+1. [`docs/PHASE_3.md`](docs/PHASE_3.md) — Nest layout, migrations, Supabase pooler, decisions, Phase 4 checklist  
+2. [`docs/PHASE_2.md`](docs/PHASE_2.md) — Modal `skoka-inference` / `run_job`, callback HMAC, R2 keys  
+3. [`docs/PHASE_1.md`](docs/PHASE_1.md) — local SAM3 library  
+4. [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) — full phased plan  
 
 ## Repository layout
 
 | Path | Role |
 |------|------|
-| [`services/inference`](services/inference) | Python SAM3 (local CLI + Modal deploy) |
+| [`apps/api`](apps/api) | NestJS API (jobs, TypeORM, R2) |
+| [`services/inference`](services/inference) | Python SAM3 (local CLI + Modal) |
 | [`docs/`](docs) | Architecture plan and phase handoffs |
+| [`docker-compose.yml`](docker-compose.yml) | Local API + Postgres 17 |
 
-NestJS API and Next.js will live under `apps/` later. Local Docker Compose (NestJS + Postgres 17) ships in Phase 3 — see the plan section **Local Docker development**. Each service keeps its own `.env.example`.
+**Secrets:** never commit `.env` / `.env.modal`. Use each service’s `.env.example`.
 
-**Secrets:** never commit `.env` or `.env.modal` (gitignored). Use `.env.example` as the template only.
+## Quick start (API)
+
+```bash
+cp apps/api/.env.example apps/api/.env
+# Set R2_* (and optionally Supabase DATABASE_* — see docs/PHASE_3.md)
+
+# Option A — host Nest + Supabase or local Postgres
+cd apps/api && npm ci && npm run start:dev
+
+# Option B — Docker (Compose Postgres; overrides DATABASE_HOST=postgres)
+docker compose up --build
+```
+
+Smoke create (multipart `file` + fields):
+
+```bash
+curl -s -X POST http://localhost:3000/api/jobs \
+  -F prompt=person -F source=web -F externalRequestId=demo-1 \
+  -F channel=web -F recipientId=local -F file=@./sample.jpg
+```
+
+Details: [`apps/api/README.md`](apps/api/README.md).
 
 ## Quick start (local inference)
 
@@ -33,23 +56,10 @@ python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
-# Set HF_TOKEN after accepting facebook/sam3 terms on Hugging Face
 pytest
 python -m inference.cli --image path/to/sample.jpg --prompt person --output /tmp/result.png
 ```
 
 ## Modal (Phase 2)
 
-Cloud checklist and contracts: [`docs/PHASE_2.md`](docs/PHASE_2.md).
-
-```bash
-cd services/inference
-source .venv/bin/activate
-pip install -e ".[deploy]"   # or .[dev]
-modal setup                  # once
-cp .env.example .env.modal   # fill HF / R2 / CALLBACK_SHARED_SECRET
-modal secret create skoka-dev --from-dotenv .env.modal --force
-modal deploy -m inference.modal_app
-```
-
-See [`services/inference/README.md`](services/inference/README.md) for device selection, tests, and smoke commands.
+See [`docs/PHASE_2.md`](docs/PHASE_2.md) and [`services/inference/README.md`](services/inference/README.md).

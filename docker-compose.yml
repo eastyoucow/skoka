@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: skoka
+      POSTGRES_PASSWORD: skoka
+      POSTGRES_DB: skoka
+    ports:
+      - "5432:5432"
+    volumes:
+      - skoka_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skoka -d skoka"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./apps/api/.env
+    environment:
+      # Compose network overrides host-oriented DATABASE_* from .env.example
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: skoka
+      DATABASE_PASSWORD: skoka
+      DATABASE_NAME: skoka
+      DATABASE_SSL: "false"
+      RUN_MIGRATIONS: "true"
+    volumes:
+      # Hot reload: bind-mount source; keep container node_modules.
+      - ./apps/api/src:/app/src
+      - ./apps/api/nest-cli.json:/app/nest-cli.json
+      - ./apps/api/tsconfig.json:/app/tsconfig.json
+      - ./apps/api/tsconfig.build.json:/app/tsconfig.build.json
+      - ./apps/api/package.json:/app/package.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  skoka_pg_data:

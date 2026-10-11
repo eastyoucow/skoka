@@ -91,13 +91,14 @@
   **Handoff:** [`PHASE_2.md`](PHASE_2.md) — decisions, Modal `skoka-dev` secret, `spawn` contract, callback auth, R2 keys, Phase 3 entry checklist. *(Fill latency/cost numbers after more GPU runs; not a Phase 3 blocker.)*
 
 ### Phase 3 — NestJS + Supabase + R2 foundations + local Docker
-- [ ] Scaffold NestJS under `apps/` (or agreed path); preserve monorepo layout and package management.
-- [ ] **Local Docker (required):** NestJS Dockerfile with hot reload; Postgres 17 official image; named volume for data; Postgres healthcheck and NestJS `depends_on` until healthy; env via `.env.example`; migrations runnable inside the API container; `docker compose up --build`; `.dockerignore`; README setup/commands. Constraints: no Python/SAM3 in Compose; no MinIO (use real R2); no secrets in git; keep setup simple for local dev.
-- [ ] Deploy/connect NestJS to Supabase Postgres (prod) with TLS, small pool and TypeORM migrations; local Compose Postgres for development.
-- [ ] Implement jobs/attempts/deliveries schema, state transitions and transactional repository methods.
-- [ ] Implement R2 storage adapter and file validation; health endpoints and structured logs with `jobId`/`attemptId`.
-- [ ] Unit/integration tests with local Postgres and S3-compatible test storage or mocks.
-- **Done when:** `docker compose up --build` starts API + Postgres; API can create job, upload input to R2, persist state and read it after restart.
+- [x] Scaffold NestJS under `apps/` (or agreed path); preserve monorepo layout and package management.
+- [x] **Local Docker (required):** NestJS Dockerfile with hot reload; Postgres 17 official image; named volume for data; Postgres healthcheck and NestJS `depends_on` until healthy; env via `.env.example`; migrations runnable inside the API container; `docker compose up --build`; `.dockerignore`; README setup/commands. Constraints: no Python/SAM3 in Compose; no MinIO (use real R2); no secrets in git; keep setup simple for local dev.
+- [x] Deploy/connect NestJS to Supabase Postgres (prod) with TLS, small pool and TypeORM migrations; local Compose Postgres for development.
+- [x] Implement jobs/attempts/deliveries schema, state transitions and transactional repository methods.
+- [x] Implement R2 storage adapter and file validation; health endpoints and structured logs with `jobId`/`attemptId`.
+- [x] Unit/integration tests with local Postgres and S3-compatible test storage or mocks.
+- **Done when:** `docker compose up --build` starts API + Postgres; API can create job, upload input to R2, persist state and read it after restart.  
+  **Handoff:** [`PHASE_3.md`](PHASE_3.md) — Nest layout, TypeORM/migration dual-run, Supabase session pooler, R2 create→`QUEUED`, pins (`typeorm@0.3.27`, `@nestjs/config@4.0.2`), Phase 4 entry checklist.
 
 ### Local Docker development (from Phase 3)
 
@@ -161,3 +162,12 @@ Implement when NestJS lands. Requirements:
 - Callbacks: Bearer + HMAC-SHA256 (`X-Skoka-Timestamp`, `X-Skoka-Signature`); bounded retries on 5xx/network/429; NestJS must treat delivery as at-least-once and key on active `attemptId`.
 - R2: direct scoped credentials in Modal Secret `skoka-dev` / env (not signed URLs for the worker).
 - Local Docker Compose: Phase 3 with NestJS + Postgres 17; Python stays out of Compose.
+
+### Resolved in Phase 3 (see [`PHASE_3.md`](PHASE_3.md))
+
+- Nest app at `apps/api` (Nest 11, npm, CommonJS). ORM TypeORM **0.3.27** with `synchronize: false`.
+- Pin `@nestjs/config@4.0.2` (v12 is ESM-only and breaks CJS boot).
+- Migrations under `src/migrations`; run via Docker entrypoint **and** Nest `migrationsRun` when `RUN_MIGRATIONS=true`; CLI DataSource `src/database/data-source.ts`.
+- Supabase: prefer **session pooler** `aws-0-<region>.pooler.supabase.com:5432` with user `postgres.<ref>`; `DATABASE_SSL=true` and `rejectUnauthorized: false`. Direct `db.*` may be IPv6-only.
+- Compose Postgres 17 remains the local default (`DATABASE_HOST=postgres` override). Python/SAM3 never in Compose; no MinIO.
+- Phase 3 HTTP create path ends at job status **`QUEUED`** with R2 `input_key`; dispatcher/Telegram/callbacks are Phase 4.
