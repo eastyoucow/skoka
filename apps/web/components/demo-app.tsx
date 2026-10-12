@@ -190,7 +190,7 @@ export function DemoApp() {
         </h1>
         <p className="mt-2 max-w-lg text-[var(--fg-muted)]">
           Upload an image, name what to find, and get a masked result with a
-          count. Public demo — no account.
+          count.
         </p>
       </header>
 
@@ -374,10 +374,6 @@ export function DemoApp() {
           </section>
         )}
       </main>
-
-      <footer className="mt-16 text-xs text-[var(--fg-muted)]/70">
-        Temporary images · no accounts · powered by SAM3
-      </footer>
     </div>
   );
 }
