@@ -4,22 +4,21 @@ Image object counter: given a photo and a text label, count matching instances a
 
 ## Current status
 
-**Phase 5 complete (code)** — Telegram delivery loop, Render Blueprint + prod Docker image, rate limit, structured metrics logs.  
-**Next:** Apply Render secrets + webhook cutover (ops checklist in [`docs/PHASE_5.md`](docs/PHASE_5.md)), then Phase 6 (Next.js) when ready.
+**Phase 6 in progress (code)** — Next.js static SPA + Nest `/web/*` with Bearer sessions and presigned R2 uploads.  
+Ops: set `CORS_ORIGINS` on API, configure R2 CORS, deploy Static Site `skoka-ui` (see [`docs/PHASE_6.md`](docs/PHASE_6.md)).
 
-Read handoffs **before** starting the next phase:
+Read handoffs:
 
-1. [`docs/PHASE_5.md`](docs/PHASE_5.md) — delivery, Render deploy, ops checklist  
-2. [`docs/PHASE_4.md`](docs/PHASE_4.md) — Telegram → Modal → callbacks  
-3. [`docs/PHASE_3.md`](docs/PHASE_3.md) — Nest layout, migrations, Supabase pooler, R2  
-4. [`docs/PHASE_2.md`](docs/PHASE_2.md) — Modal `skoka-inference` / `run_job`, callback HMAC  
-5. [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) — full phased plan  
+1. [`docs/PHASE_6.md`](docs/PHASE_6.md) — web demo, sessions, Render UI settings  
+2. [`docs/PHASE_5.md`](docs/PHASE_5.md) — delivery, Render API deploy  
+3. [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) — full phased plan  
 
 ## Repository layout
 
 | Path | Role |
 |------|------|
-| [`apps/api`](apps/api) | NestJS API (Telegram, jobs, Modal, delivery) |
+| [`apps/api`](apps/api) | NestJS API (Telegram, jobs, Modal, delivery, `/web/*`) |
+| [`apps/web`](apps/web) | Next.js static SPA (Render Static Site `skoka-ui`) |
 | [`services/inference`](services/inference) | Python SAM3 (local CLI + Modal) |
 | [`docs/`](docs) | Architecture plan and phase handoffs |
 | [`docker-compose.yml`](docker-compose.yml) | Local API + Postgres 17 |
@@ -42,6 +41,19 @@ docker compose up --build
 
 Details: [`apps/api/README.md`](apps/api/README.md) and [`docs/PHASE_5.md`](docs/PHASE_5.md).
 
+## Quick start (web UI)
+
+```bash
+# API must allow CORS for the UI origin
+# apps/api/.env → CORS_ORIGINS=http://localhost:3001
+
+cd apps/web
+cp .env.example .env.local
+npm ci && npm run dev   # http://localhost:3001
+```
+
+See [`apps/web/README.md`](apps/web/README.md) and [`docs/PHASE_6.md`](docs/PHASE_6.md).
+
 ## Quick start (local inference)
 
 ```bash
@@ -60,4 +72,5 @@ See [`docs/PHASE_2.md`](docs/PHASE_2.md) and [`services/inference/README.md`](se
 
 ## Production (Render)
 
-See [`docs/PHASE_5.md`](docs/PHASE_5.md) and [`render.yaml`](render.yaml). Use a **paid always-on** instance so dispatcher/delivery/recovery keep running.
+- **API** Web Service `skoka` → `https://skoka.onrender.com` — [`docs/PHASE_5.md`](docs/PHASE_5.md), [`render.yaml`](render.yaml). Paid always-on.
+- **UI** Static Site `skoka-ui` → `https://skoka-ui.onrender.com` — root `apps/web`, publish `out`, `NEXT_PUBLIC_API_URL=https://skoka.onrender.com`.

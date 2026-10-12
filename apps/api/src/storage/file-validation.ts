@@ -64,6 +64,20 @@ export function buildOutputObjectKey(jobId: string, attemptId: string): string {
   return `jobs/${jobId}/attempts/${attemptId}/result.png`;
 }
 
+export function buildWebUploadObjectKey(
+  sessionId: string,
+  uploadId: string,
+  extension: string,
+): string {
+  return `uploads/${sessionId}/${uploadId}.${extension}`;
+}
+
+const EXT_BY_MIME_EXPORT = EXT_BY_MIME;
+
+export function extensionForMime(mimeType: string): string | undefined {
+  return EXT_BY_MIME_EXPORT[mimeType.toLowerCase()];
+}
+
 function looksLikeImage(buf: Buffer, mimeType: string): boolean {
   if (mimeType === 'image/jpeg') {
     return buf[0] === 0xff && buf[1] === 0xd8;

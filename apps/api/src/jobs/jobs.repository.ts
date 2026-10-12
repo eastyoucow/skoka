@@ -42,6 +42,27 @@ export class JobsRepository {
     return this.jobs.findOne({ where: { source, externalRequestId } });
   }
 
+  /**
+   * Count active web jobs for a session (recipient_id on WEB deliveries,
+   * or external_request_id prefix sessionId:).
+   */
+  async countWebActiveForRecipient(
+    sessionId: string,
+    statuses: JobStatus[],
+  ): Promise<number> {
+    if (!statuses.length) {
+      return 0;
+    }
+    return this.jobs
+      .createQueryBuilder('job')
+      .where('job.source = :source', { source: JobSource.WEB })
+      .andWhere('job.status IN (:...statuses)', { statuses })
+      .andWhere('job.external_request_id LIKE :prefix', {
+        prefix: `${sessionId}:%`,
+      })
+      .getCount();
+  }
+
   findAttemptById(id: string): Promise<JobAttempt | null> {
     return this.attempts.findOne({ where: { id } });
   }
@@ -282,6 +303,7 @@ export class JobsRepository {
         .set({ nextRetryAt: new Date() })
         .where('job_id = :jobId', { jobId: job.id })
         .andWhere('status = :status', { status: DeliveryStatus.PENDING })
+        .andWhere('channel = :channel', { channel: DeliveryChannel.TELEGRAM })
         .execute();
 
       return { applied: true, job };
@@ -359,13 +381,14 @@ export class JobsRepository {
       job.nextAttemptAt = null;
       await manager.save(job);
 
-      // Terminal failure: mark deliveries ready so Phase 5 can notify once.
+      // Terminal failure: mark Telegram deliveries ready so delivery loop can notify once.
       await manager
         .createQueryBuilder()
         .update(Delivery)
         .set({ nextRetryAt: new Date() })
         .where('job_id = :jobId', { jobId: job.id })
         .andWhere('status = :status', { status: DeliveryStatus.PENDING })
+        .andWhere('channel = :channel', { channel: DeliveryChannel.TELEGRAM })
         .execute();
 
       return { applied: true, job, terminal: true };
@@ -466,6 +489,7 @@ export class JobsRepository {
             .set({ nextRetryAt: new Date() })
             .where('job_id = :jobId', { jobId: job.id })
             .andWhere('status = :status', { status: DeliveryStatus.PENDING })
+            .andWhere('channel = :channel', { channel: DeliveryChannel.TELEGRAM })
             .execute();
         }
         await manager.save(job);
@@ -477,7 +501,7 @@ export class JobsRepository {
 
   /**
    * Fail RECEIVED jobs that never got input before deadline.
-   * Arms PENDING deliveries so the delivery loop can notify once.
+   * Arms PENDING Telegram deliveries so the delivery loop can notify once.
    */
   async failStaleReceived(): Promise<number> {
     return this.dataSource.transaction(async (manager) => {
@@ -509,6 +533,7 @@ export class JobsRepository {
           .set({ nextRetryAt: new Date() })
           .where('job_id = :jobId', { jobId: job.id })
           .andWhere('status = :status', { status: DeliveryStatus.PENDING })
+          .andWhere('channel = :channel', { channel: DeliveryChannel.TELEGRAM })
           .execute();
         handled += 1;
       }
@@ -517,8 +542,9 @@ export class JobsRepository {
   }
 
   /**
-   * Claim a PENDING delivery ready for send.
+   * Claim a PENDING Telegram delivery ready for send.
    * Short transaction with SKIP LOCKED — no network I/O inside.
+   * Web channel deliveries are poll-only and must never be claimed here.
    */
   async claimPendingDelivery(leaseMs: number): Promise<Delivery | null> {
     return this.dataSource.transaction(async (manager) => {
@@ -526,6 +552,7 @@ export class JobsRepository {
         `
         SELECT id FROM deliveries
         WHERE status = $1
+          AND channel = $2
           AND next_retry_at IS NOT NULL
           AND next_retry_at <= NOW()
           AND (lease_until IS NULL OR lease_until < NOW())
@@ -533,7 +560,7 @@ export class JobsRepository {
         FOR UPDATE SKIP LOCKED
         LIMIT 1
         `,
-        [DeliveryStatus.PENDING],
+        [DeliveryStatus.PENDING, DeliveryChannel.TELEGRAM],
       );
 
       if (!rows.length) {

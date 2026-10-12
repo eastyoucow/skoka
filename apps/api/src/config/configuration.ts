@@ -56,10 +56,37 @@ export default () => ({
     maxAttempts: parseInt(process.env.DELIVERY_MAX_ATTEMPTS ?? '5', 10),
     retryBackoffMs: parseInt(process.env.DELIVERY_RETRY_BACKOFF_MS ?? '10000', 10),
   },
-  /** Soft per-IP rate limit for Telegram webhook (in-memory; single instance). */
+  /** Soft per-IP rate limits (in-memory; single instance). */
   rateLimit: {
     telegramWebhookPerMinute: parseInt(
       process.env.RATE_LIMIT_TELEGRAM_PER_MINUTE ?? '60',
+      10,
+    ),
+    webSessionsPerMinute: parseInt(
+      process.env.RATE_LIMIT_WEB_SESSIONS_PER_MINUTE ?? '30',
+      10,
+    ),
+    webUploadsPerMinute: parseInt(
+      process.env.RATE_LIMIT_WEB_UPLOADS_PER_MINUTE ?? '30',
+      10,
+    ),
+    webJobsPerMinute: parseInt(
+      process.env.RATE_LIMIT_WEB_JOBS_PER_MINUTE ?? '20',
+      10,
+    ),
+  },
+  cors: {
+    origins: (process.env.CORS_ORIGINS ?? 'http://localhost:3001')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  },
+  web: {
+    sessionTtlHours: parseInt(process.env.WEB_SESSION_TTL_HOURS ?? '24', 10),
+    uploadUrlTtlSeconds: parseInt(process.env.WEB_UPLOAD_URL_TTL_SECONDS ?? '900', 10),
+    resultUrlTtlSeconds: parseInt(process.env.WEB_RESULT_URL_TTL_SECONDS ?? '300', 10),
+    maxConcurrentJobsPerSession: parseInt(
+      process.env.WEB_MAX_CONCURRENT_JOBS_PER_SESSION ?? '1',
       10,
     ),
   },

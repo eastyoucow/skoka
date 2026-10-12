@@ -11,6 +11,7 @@ import { ModalModule } from './modal/modal.module';
 import { OrchestrationModule } from './orchestration/orchestration.module';
 import { StorageModule } from './storage/storage.module';
 import { TelegramModule } from './telegram/telegram.module';
+import { WebModule } from './web/web.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { TelegramModule } from './telegram/telegram.module';
     OrchestrationModule,
     InternalModule,
     TelegramModule,
+    WebModule,
     HealthModule,
   ],
 })

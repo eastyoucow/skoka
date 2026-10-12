@@ -1,17 +1,17 @@
 # Skoka API (NestJS)
 
-Phase 5: Postgres (TypeORM), Cloudflare R2, Telegram webhook + **result delivery**, Modal dispatch, signed callbacks, recovery, Render prod image.
+Phase 6: Postgres (TypeORM), Cloudflare R2, Telegram + **web demo** (`/web/*` Bearer sessions, presigned uploads), Modal dispatch, signed callbacks, recovery, Render prod image.
 
-Handoff: [`docs/PHASE_5.md`](../../docs/PHASE_5.md).  
-Prior: [`docs/PHASE_4.md`](../../docs/PHASE_4.md), [`docs/PHASE_2.md`](../../docs/PHASE_2.md).
+Handoff: [`docs/PHASE_6.md`](../../docs/PHASE_6.md).  
+Prior: [`docs/PHASE_5.md`](../../docs/PHASE_5.md).
 
 ## Setup
 
 ```bash
 cd apps/api
 cp .env.example .env
-# Fill R2_*, CALLBACK_SHARED_SECRET, TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET,
-# PUBLIC_BASE_URL (HTTPS tunnel or Render URL), and MODAL_TOKEN_* for Docker/prod
+# Fill R2_*, CALLBACK_SHARED_SECRET, TELEGRAM_*, PUBLIC_BASE_URL, MODAL_TOKEN_*,
+# and CORS_ORIGINS=http://localhost:3001 (for apps/web)
 npm ci
 npm run start:dev
 ```
@@ -63,8 +63,13 @@ See [`docs/PHASE_5.md`](../../docs/PHASE_5.md). Blueprint: [`render.yaml`](../..
 | GET | `/health` | Liveness |
 | GET | `/health/ready` | Postgres ready |
 | GET | `/health/storage` | R2 probe (non-gating) |
-| POST | `/api/jobs` | multipart create (dev/foundation) |
-| GET | `/api/jobs/:id` | Job by id |
+| POST | `/web/sessions` | Anonymous Bearer session |
+| POST | `/web/uploads` | Presigned R2 PUT (Bearer) |
+| POST | `/web/jobs` | Create job from upload (Bearer + Idempotency-Key) |
+| GET | `/web/jobs/:id` | Job status (session-owned) |
+| GET | `/web/jobs/:id/result` | Short-lived signed result URL |
+| POST | `/api/jobs` | multipart create (**dev only**; 403 in production) |
+| GET | `/api/jobs/:id` | Job by id (**dev only**; 403 in production) |
 | POST | `/webhooks/telegram` | Telegram updates (rate-limited) |
 | POST | `/internal/jobs/:id/complete` | Modal success callback |
 | POST | `/internal/jobs/:id/fail` | Modal failure callback |
@@ -85,11 +90,12 @@ src/
   common/           rate-limit guard
   database/         TypeORM options, CLI DataSource
   jobs/             entities, repository, create/get API
+  web/              anonymous sessions, uploads, web jobs
   telegram/         webhook + Bot API client (sendPhoto)
   modal/            Modal spawn client
   orchestration/    dispatcher + recovery + delivery loops
   internal/         HMAC callback receivers
-  storage/          R2 adapter + image validation
+  storage/          R2 adapter + presign + image validation
   health/
   migrations/
 ```

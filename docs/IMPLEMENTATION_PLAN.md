@@ -137,11 +137,12 @@ Implement when NestJS lands. Requirements:
   **Handoff:** [`PHASE_5.md`](PHASE_5.md).
 
 ### Phase 6 — Next.js V2 (later)
-- [ ] Build React upload/prompt/status/result/download UI; reuse NestJS jobs domain.
-- [ ] Add web authentication/ownership and idempotency scope; presigned direct-to-R2 uploads.
-- [ ] Implement NestJS web endpoints and status polling; short-lived signed result download.
-- [ ] Test browser uploads, CORS, private-object access, expiration, simultaneous jobs, mobile layout.
-- **Done when:** web users can submit images and retrieve static results without changes to SAM3 processing.
+- [x] Build React upload/prompt/status/result/download UI; reuse NestJS jobs domain.
+- [x] Add web authentication/ownership and idempotency scope; presigned direct-to-R2 uploads.
+- [x] Implement NestJS web endpoints and status polling; short-lived signed result download.
+- [ ] Test browser uploads, CORS, private-object access, expiration, simultaneous jobs, mobile layout. *(manual / staging smoke)*
+- **Done when:** web users can submit images and retrieve static results without changes to SAM3 processing.  
+  **Handoff:** [`PHASE_6.md`](PHASE_6.md).
 
 ## Engineering rules for Claude
 

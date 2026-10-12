@@ -4,6 +4,9 @@ import { join } from 'path';
 import { Delivery } from '../jobs/entities/delivery.entity';
 import { JobAttempt } from '../jobs/entities/job-attempt.entity';
 import { Job } from '../jobs/entities/job.entity';
+import { WebJobRequest } from '../web/entities/web-job-request.entity';
+import { WebSession } from '../web/entities/web-session.entity';
+import { WebUpload } from '../web/entities/web-upload.entity';
 
 /**
  * CLI DataSource for TypeORM migrations.
@@ -19,7 +22,7 @@ function buildCliDataSource(): DataSource {
 
   const common = {
     type: 'postgres' as const,
-    entities: [Job, JobAttempt, Delivery],
+    entities: [Job, JobAttempt, Delivery, WebSession, WebUpload, WebJobRequest],
     migrations: [join(__dirname, '..', 'migrations', '*.{ts,js}')],
     synchronize: false,
     logging: true,

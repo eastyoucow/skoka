@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -10,14 +11,30 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CreateJobDto } from './dto/create-job.dto';
 import { JobsService } from './jobs.service';
 
+/**
+ * Dev/ops multipart job API. Disabled in production — use /web/* with sessions.
+ */
 @Controller('api/jobs')
 export class JobsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(
+    private readonly jobsService: JobsService,
+    private readonly config: ConfigService,
+  ) {}
+
+  private assertDevOnly(): void {
+    const env = this.config.get<string>('nodeEnv') ?? 'development';
+    if (env === 'production') {
+      throw new ForbiddenException(
+        'Use /web/* endpoints for public job access',
+      );
+    }
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -31,6 +48,7 @@ export class JobsController {
     @Body() dto: CreateJobDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
+    this.assertDevOnly();
     const { job, created } = await this.jobsService.createWithUpload(dto, file);
     return {
       id: job.id,
@@ -51,6 +69,7 @@ export class JobsController {
 
   @Get(':id')
   async get(@Param('id', ParseUUIDPipe) id: string) {
+    this.assertDevOnly();
     const job = await this.jobsService.getById(id);
     return {
       id: job.id,

@@ -22,6 +22,17 @@ async function bootstrap() {
   );
 
   const config = app.get(ConfigService);
+  const corsOrigins = config.get<string[]>('cors.origins') ?? [];
+  if (corsOrigins.length) {
+    app.enableCors({
+      origin: corsOrigins,
+      methods: ['GET', 'POST', 'OPTIONS'],
+      allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key'],
+      credentials: false,
+    });
+    Logger.log(`CORS origins: ${corsOrigins.join(', ')}`, 'Bootstrap');
+  }
+
   const port = config.get<number>('port') ?? 3000;
   await app.listen(port);
   Logger.log(`API listening on :${port}`, 'Bootstrap');

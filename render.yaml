@@ -53,6 +53,13 @@ services:
       # Example prod value: https://skoka.onrender.com
       - key: PUBLIC_BASE_URL
         sync: false
+      # Comma-separated browser origins (e.g. https://skoka-ui.onrender.com,http://localhost:3001)
+      - key: CORS_ORIGINS
+        sync: false
+      - key: WEB_SESSION_TTL_HOURS
+        value: "24"
+      - key: WEB_MAX_CONCURRENT_JOBS_PER_SESSION
+        value: "1"
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID
